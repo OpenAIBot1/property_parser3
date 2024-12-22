@@ -10,20 +10,32 @@ from src.database.engine import get_db
 from src.telegram.session_manager import SessionManager
 
 class TelegramParser:
-    def __init__(self):
-        self._running = False
-        self.session_manager = SessionManager()
+    """Parser for Telegram channels."""
+    
+    def __init__(self, session_manager):
+        """Initialize parser.
+        
+        Args:
+            session_manager: SessionManager instance for handling Telegram sessions
+        """
+        self.session_manager = session_manager
         self.client = None
+        self._running = False
         
     async def start(self):
         """Start the parser."""
-        self.client = await self.session_manager.get_client()
+        print("Starting parser...")
         self._running = True
+        self.client = await self.session_manager.get_client()
+        print("Parser started successfully")
         
     async def stop(self):
         """Stop the parser."""
+        print("Stopping parser...")
         self._running = False
-        await self.session_manager.stop_client()
+        if self.session_manager:
+            await self.session_manager.disconnect()
+        print("Parser stopped")
 
     async def _download_media(self, message, media):
         """Download media and return the file bytes."""
@@ -168,6 +180,12 @@ class TelegramParser:
             last_id = max(msg.id for msg in messages)
             
             print(f"Processing message group: {len(messages)} messages, IDs {first_id}-{last_id}")
+            
+            # Generate message link
+            if channel.username:
+                message_link = f"https://t.me/{channel.username}/{first_id}"
+            else:
+                message_link = f"https://t.me/c/{channel.id}/{first_id}"
                 
             # Create message group
             db_group = MessageGroup(
@@ -177,7 +195,8 @@ class TelegramParser:
                 first_message_id=first_id,
                 combined_text='\n'.join(msg.text for msg in messages if msg and msg.text),
                 posted_date=message.date,
-                parsed_date=datetime.now(tz.utc)
+                parsed_date=datetime.now(tz.utc),
+                message_link=message_link
             )
             db.add(db_group)
             db.flush()
@@ -206,6 +225,7 @@ class TelegramParser:
             if has_media:
                 db.commit()
                 print(f"Saved message group {db_group.group_id} ({len(messages)} messages, {media_count} media items)")
+                print(f"Message link: {message_link}")
                 return last_id
             else:
                 db.rollback()
@@ -220,9 +240,13 @@ class TelegramParser:
     async def parse_channels(self):
         """Parse all channels for new messages."""
         if not self.client or not self.client.is_connected():
+            print("Connecting client...")
             self.client = await self.session_manager.get_client()
+            print("Client connected successfully")
             
         db = next(get_db())
+        
+        print(f"\nStarting to parse channels: {CHANNEL_NAMES}")
         
         while self._running:
             for channel_name in CHANNEL_NAMES:
@@ -231,8 +255,32 @@ class TelegramParser:
                     
                 try:
                     # Get channel
-                    channel = await self.client.get_entity(channel_name)
-                    print(f"\nChecking channel: {channel.title}")
+                    print(f"\n{'='*50}")
+                    print(f"Processing channel: {channel_name}")
+                    try:
+                        # Try with @ prefix if not present
+                        if not channel_name.startswith('@'):
+                            print(f"Trying with @ prefix...")
+                            try:
+                                channel = await self.client.get_entity(f"@{channel_name}")
+                            except:
+                                print(f"Failed with @ prefix, trying original name...")
+                                channel = await self.client.get_entity(channel_name)
+                        else:
+                            channel = await self.client.get_entity(channel_name)
+                            
+                        print(f"Successfully connected to channel: {channel.title}")
+                        print(f"Channel ID: {channel.id}")
+                        print(f"Channel username: {channel.username}")
+                        
+                    except ValueError as e:
+                        print(f"Error accessing channel {channel_name}: {str(e)}")
+                        print("Try using the full channel URL (t.me/...) or channel ID")
+                        print("Make sure you have joined the channel")
+                        continue
+                    except Exception as e:
+                        print(f"Unexpected error accessing channel {channel_name}: {str(e)}")
+                        continue
                     
                     # Get or create channel state
                     channel_state = db.query(ChannelState).filter(
@@ -240,18 +288,20 @@ class TelegramParser:
                     ).first()
                     
                     if not channel_state:
-                        print("New channel, getting latest message")
+                        print("\nNew channel detected, getting latest message")
                         # Get latest message
                         latest_messages = await self.client.get_messages(channel, limit=1)
                         if not latest_messages:
-                            print("No messages in channel")
+                            print("No messages found in channel")
                             continue
                             
                         latest_message = latest_messages[0]
                         if not latest_message:
-                            print("No messages in channel")
+                            print("No valid message found")
                             continue
                             
+                        print(f"Found latest message ID: {latest_message.id}")
+                        
                         # Process the message group
                         last_id = await self._process_message_group(channel, latest_message, db)
                         
@@ -267,7 +317,7 @@ class TelegramParser:
                         print(f"Created channel state with last_message_id = {channel_state.last_message_id}")
                         
                     else:
-                        print(f"Checking for new messages after ID {channel_state.last_message_id}")
+                        print(f"\nExisting channel, last_message_id = {channel_state.last_message_id}")
                         # Get new messages
                         new_messages = await self.client.get_messages(
                             channel,
@@ -275,17 +325,39 @@ class TelegramParser:
                         )
                         
                         if not new_messages:
-                            print("No new messages")
+                            print("No new messages found")
                             continue
                             
-                        # Process each message group
+                        print(f"Found {len(new_messages)} new messages")
+                        
+                        # Track processed groups to avoid duplicates
+                        processed_groups = set()
                         highest_id = channel_state.last_message_id
-                        for message in reversed(new_messages):  # Process in chronological order
+                        
+                        # Process messages in chronological order
+                        for message in reversed(new_messages):
                             if not message:
                                 continue
-                            last_id = await self._process_message_group(channel, message, db)
+                                
+                            # Skip if we've already processed this group
+                            group_id = message.grouped_id or message.id
+                            if group_id in processed_groups:
+                                print(f"Skipping message {message.id} (group {group_id} already processed)")
+                                continue
+                                
+                            # Get all messages in the group
+                            group_messages = await self._get_message_group(channel, message)
+                            if not group_messages:
+                                continue
+                                
+                            # Find the first message in the group
+                            first_message = min(group_messages, key=lambda m: m.id)
+                            
+                            # Process the group using the first message
+                            last_id = await self._process_message_group(channel, first_message, db)
                             if last_id:
                                 highest_id = max(highest_id, last_id)
+                                processed_groups.add(group_id)
                         
                         # Update channel state
                         if highest_id > channel_state.last_message_id:
@@ -296,15 +368,18 @@ class TelegramParser:
                     
                 except Exception as e:
                     print(f"Error parsing channel {channel_name}: {str(e)}")
+                    import traceback
+                    print(f"Traceback: {traceback.format_exc()}")
                     continue
                     
                 await asyncio.sleep(1)  # Avoid hitting rate limits
             
-            # Wait before checking for new messages
+            print("\nFinished parsing all channels, waiting 60 seconds...")
             await asyncio.sleep(60)  # Check every minute
 
 async def main():
-    parser = TelegramParser()
+    session_manager = SessionManager()
+    parser = TelegramParser(session_manager)
     await parser.start()
     try:
         await parser.parse_channels()

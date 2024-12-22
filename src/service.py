@@ -8,6 +8,7 @@ from datetime import datetime, UTC
 from src.database.engine import init_db
 from src.parser.telegram_parser import TelegramParser
 from src.telegram.session_manager import SessionManager
+from src.config import settings
 
 # Configure logging
 logging.basicConfig(
@@ -28,24 +29,43 @@ def setup_environment():
 
 async def main():
     """Main service function."""
+    print("\nService starting...")
+    logger.info("Service starting")
+    print(f"Using channel names: {settings.CHANNEL_NAMES}")
+    logger.info(f"Using channel names: {settings.CHANNEL_NAMES}")
+    
+    if not settings.CHANNEL_NAMES:
+        print("ERROR: No channel names configured!")
+        logger.error("No channel names configured")
+        return
+        
     try:
         # Initialize database
         init_db()
         logger.info("Database initialized")
 
-        # Create and start parser
-        parser = TelegramParser()
-        await parser.start()
+        session_manager = SessionManager()
+        parser = TelegramParser(session_manager)
         
         try:
-            # Run parser continuously
-            while True:
-                await parser.parse_channels()
-                await asyncio.sleep(300)  # 5 minutes interval
-        except KeyboardInterrupt:
-            logger.info("Received shutdown signal")
-        finally:
+            await parser.start()
+            logger.info("Parser started")
+            
+            try:
+                # Run parser continuously
+                while True:
+                    await parser.parse_channels()
+                    await asyncio.sleep(300)  # 5 minutes interval
+            except KeyboardInterrupt:
+                logger.info("Received shutdown signal")
+            finally:
+                await parser.stop()
+                logger.info("Parser stopped")
+                
+        except Exception as e:
+            logger.error(f"Error in main service: {str(e)}")
             await parser.stop()
+            raise
             
     except Exception as e:
         logger.error(f"Service error: {str(e)}")
