@@ -50,6 +50,8 @@ async def main():
         try:
             await parser.start()
             logger.info("Parser started")
+            # Start parsing channels
+            await parser.parse_channels()
             
             try:
                 # Run parser continuously

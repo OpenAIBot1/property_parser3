@@ -8,9 +8,5 @@ startCommand = "python -m src.service"
 restartPolicyType = "always"
 restartPolicyMaxRetries = 10
 
-[service]
-internal_port = 8000
-auto_deploy = true
-
 [nixpacks]
 python-version = "3.12.1"
