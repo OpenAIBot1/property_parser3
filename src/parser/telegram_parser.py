@@ -247,6 +247,7 @@ class TelegramParser:
         db = next(get_db())
         
         print(f"\nStarting to parse channels: {CHANNEL_NAMES}")
+        print(f"Parser running state: {self._running}")
         
         while self._running:
             for channel_name in CHANNEL_NAMES:

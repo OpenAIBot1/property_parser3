@@ -51,7 +51,12 @@ async def main():
             await parser.start()
             logger.info("Parser started")
             # Start parsing channels
-            await parser.parse_channels()
+            try:
+                logger.info("Starting to parse channels...")
+                await parser.parse_channels()
+            except Exception as e:
+                logger.error(f"Error parsing channels: {str(e)}", exc_info=True)
+                raise
             
             try:
                 # Run parser continuously
