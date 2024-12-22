@@ -7,7 +7,7 @@ buildCommand = "pip install -r requirements.txt"
 startCommand = "python -m src.service"
 healthcheckPath = "/"
 healthcheckTimeout = 100
-restartPolicyType = "on-failure"
+restartPolicyType = "always"
 restartPolicyMaxRetries = 10
 
 [service]
