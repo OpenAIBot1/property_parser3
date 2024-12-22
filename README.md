@@ -1,6 +1,6 @@
 # Telegram Channel Parser
 
-A Python-based Telegram channel parser that saves posts to a database. Built for Railway deployment.
+A Python-based Telegram channel parser that saves posts to a PostgreSQL database. Built for Railway deployment.
 
 ## Features
 
@@ -10,8 +10,9 @@ A Python-based Telegram channel parser that saves posts to a database. Built for
 - Stateful parsing (remembers last parsed message for each channel)
 - Graceful error handling and recovery
 - Comprehensive logging
+- Railway deployment ready with PostgreSQL support
 
-## Setup
+## Local Development Setup
 
 1. Copy `.env.example` to `.env` and fill in your credentials:
    ```bash
@@ -23,81 +24,109 @@ A Python-based Telegram channel parser that saves posts to a database. Built for
    - Create a new application
    - Copy API_ID and API_HASH to your .env file
 
-3. Install dependencies:
+3. Generate a session string:
+   ```bash
+   python generate_session.py
+   ```
+   Copy the generated session string to your .env file.
+
+4. Install dependencies:
    ```bash
    pip install -r requirements.txt
    ```
 
-4. Run the service:
+5. Run the service:
    ```bash
-   ./run_service.sh
+   python -m src.service
    ```
+
+## Railway Deployment
+
+1. Push your code to GitHub
+
+2. On Railway:
+   - Create a new project
+   - Choose "Deploy from GitHub repo"
+   - Select your repository
+
+3. Add PostgreSQL Database:
+   - Click "New"
+   - Select "Database"
+   - Choose "Add PostgreSQL"
+
+4. Configure Environment Variables:
+   - `TELEGRAM_API_ID`: Your Telegram API ID
+   - `TELEGRAM_API_HASH`: Your Telegram API Hash
+   - `SESSION_NAME`: Name for your session (optional)
+   - `SESSION_STRING`: Your session string from generate_session.py
+   - `CHANNEL_NAMES`: Comma-separated list of channel usernames to parse
+
+Note: `DATABASE_URL` will be automatically set by Railway when you add PostgreSQL.
 
 ## Configuration
 
 ### Environment Variables
-- `API_ID`: Your Telegram API ID
-- `API_HASH`: Your Telegram API Hash
-- `SESSION_NAME`: Name for your session file
+- `TELEGRAM_API_ID`: Your Telegram API ID
+- `TELEGRAM_API_HASH`: Your Telegram API Hash
+- `SESSION_NAME`: Name for your session (optional)
+- `SESSION_STRING`: Session string for Telegram authentication
 - `CHANNEL_NAMES`: Comma-separated list of channel usernames or links to parse
-- `DATABASE_URL`: Database connection URL (defaults to SQLite)
-
-### Parser Settings
-- `parse_interval`: Time between parsing cycles in seconds (default: 300)
-- Logging configuration in `service.py`
+- `DATABASE_URL`: PostgreSQL connection URL (automatically set by Railway)
 
 ## Database Schema
 
-The parser uses SQLite by default, storing data in `posts.db`. For Railway deployment, you can change the `DATABASE_URL` in the environment variables.
+The parser uses PostgreSQL for production and SQLite for development.
 
 ### Tables
 
 #### ChannelState
 Tracks the parsing state for each channel:
-- `channel_id`: Unique identifier for the channel
+- `channel_id`: Unique identifier for the channel (BigInteger)
 - `channel_name`: Username or title of the channel
 - `last_message_id`: ID of the last parsed message
 - `last_parsed_date`: Timestamp of the last successful parse
 
 #### MessageGroup
 Groups related messages together:
-- `channel_id`: Channel identifier
+- `channel_id`: Channel identifier (BigInteger)
 - `channel_name`: Channel name
-- `group_id`: Group identifier from Telegram
+- `group_id`: Group identifier from Telegram (BigInteger)
 - `first_message_id`: ID of the first message in the group
 - `combined_text`: Combined text of all messages in the group
 - `posted_date`: When the message was posted
 - `parsed_date`: When the message was parsed
+- `message_link`: Link to the first message in the group
 
 #### Message
 Individual messages within a group:
 - `message_id`: Telegram message identifier
 - `text`: Message content
-- `group_id`: Reference to the message group
+- `group_id`: Reference to the message group (BigInteger)
 
 #### MediaItem
 Media files attached to messages:
-- `group_id`: Reference to the message group
+- `group_id`: Reference to the message group (BigInteger)
 - `media_type`: Type of media (photo, document)
 - `file_id`: Telegram file identifier
-- `file_url`: URL to the media file (if available)
+- `file_url`: Binary data of the media file
 - `mime_type`: MIME type of the file
 - `file_size`: Size of the file in bytes
 
-## Running as a Service
+## Monitoring and Logs
 
-The parser can be run as a continuous service using the provided `run_service.sh` script. The service:
-- Initializes the database if needed
-- Handles graceful shutdown on SIGTERM/SIGINT
-- Provides comprehensive logging to both console and file
-- Automatically recovers from errors and network issues
+- Railway provides built-in logging and monitoring
+- Application logs can be viewed in the Railway dashboard
+- The parser logs:
+  - Channel connections
+  - Message processing status
+  - Media downloads
+  - Errors and retries
 
-To stop the service, press Ctrl+C or send a SIGTERM signal.
+## Error Handling
 
-## Logs
-
-Logs are written to both:
-- Console (stdout)
-- `telegram_parser.log` file
-
-Log entries include timestamps, log levels, and detailed error information when available.
+The service includes robust error handling:
+- Automatic retry on network errors
+- 5-minute interval between parsing cycles
+- 1-minute retry delay on errors
+- Graceful handling of API rate limits
+- Database transaction management for data integrity
