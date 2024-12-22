@@ -249,134 +249,128 @@ class TelegramParser:
         print(f"\nStarting to parse channels: {CHANNEL_NAMES}")
         print(f"Parser running state: {self._running}")
         
-        while self._running:
-            for channel_name in CHANNEL_NAMES:
-                if not channel_name:
-                    continue
-                    
+        for channel_name in CHANNEL_NAMES:
+            if not channel_name:
+                continue
+                
+            try:
+                # Get channel
+                print(f"\n{'='*50}")
+                print(f"Processing channel: {channel_name}")
                 try:
-                    # Get channel
-                    print(f"\n{'='*50}")
-                    print(f"Processing channel: {channel_name}")
-                    try:
-                        # Try with @ prefix if not present
-                        if not channel_name.startswith('@'):
-                            print(f"Trying with @ prefix...")
-                            try:
-                                channel = await self.client.get_entity(f"@{channel_name}")
-                            except:
-                                print(f"Failed with @ prefix, trying original name...")
-                                channel = await self.client.get_entity(channel_name)
-                        else:
+                    # Try with @ prefix if not present
+                    if not channel_name.startswith('@'):
+                        print(f"Trying with @ prefix...")
+                        try:
+                            channel = await self.client.get_entity(f"@{channel_name}")
+                        except:
+                            print(f"Failed with @ prefix, trying original name...")
                             channel = await self.client.get_entity(channel_name)
-                            
-                        print(f"Successfully connected to channel: {channel.title}")
-                        print(f"Channel ID: {channel.id}")
-                        print(f"Channel username: {channel.username}")
-                        
-                    except ValueError as e:
-                        print(f"Error accessing channel {channel_name}: {str(e)}")
-                        print("Try using the full channel URL (t.me/...) or channel ID")
-                        print("Make sure you have joined the channel")
-                        continue
-                    except Exception as e:
-                        print(f"Unexpected error accessing channel {channel_name}: {str(e)}")
-                        continue
-                    
-                    # Get or create channel state
-                    channel_state = db.query(ChannelState).filter(
-                        ChannelState.channel_id == channel.id
-                    ).first()
-                    
-                    if not channel_state:
-                        print("\nNew channel detected, getting latest message")
-                        # Get latest message
-                        latest_messages = await self.client.get_messages(channel, limit=1)
-                        if not latest_messages:
-                            print("No messages found in channel")
-                            continue
-                            
-                        latest_message = latest_messages[0]
-                        if not latest_message:
-                            print("No valid message found")
-                            continue
-                            
-                        print(f"Found latest message ID: {latest_message.id}")
-                        
-                        # Process the message group
-                        last_id = await self._process_message_group(channel, latest_message, db)
-                        
-                        # Create channel state
-                        channel_state = ChannelState(
-                            channel_id=channel.id,
-                            channel_name=channel.username or channel.title,
-                            last_message_id=last_id if last_id is not None else latest_message.id,
-                            last_parsed_date=datetime.now(tz.utc)
-                        )
-                        db.add(channel_state)
-                        db.commit()
-                        print(f"Created channel state with last_message_id = {channel_state.last_message_id}")
-                        
                     else:
-                        print(f"\nExisting channel, last_message_id = {channel_state.last_message_id}")
-                        # Get new messages
-                        new_messages = await self.client.get_messages(
-                            channel,
-                            min_id=channel_state.last_message_id
-                        )
+                        channel = await self.client.get_entity(channel_name)
                         
-                        if not new_messages:
-                            print("No new messages found")
+                    print(f"Successfully connected to channel: {channel.title}")
+                    print(f"Channel ID: {channel.id}")
+                    print(f"Channel username: {channel.username}")
+                    
+                except ValueError as e:
+                    print(f"Error accessing channel {channel_name}: {str(e)}")
+                    print("Try using the full channel URL (t.me/...) or channel ID")
+                    print("Make sure you have joined the channel")
+                    continue
+                except Exception as e:
+                    print(f"Unexpected error accessing channel {channel_name}: {str(e)}")
+                    continue
+                
+                # Get or create channel state
+                channel_state = db.query(ChannelState).filter(
+                    ChannelState.channel_id == channel.id
+                ).first()
+                
+                if not channel_state:
+                    print("\nNew channel detected, getting latest message")
+                    # Get latest message
+                    latest_messages = await self.client.get_messages(channel, limit=1)
+                    if not latest_messages:
+                        print("No messages found in channel")
+                        continue
+                        
+                    latest_message = latest_messages[0]
+                    if not latest_message:
+                        print("No valid message found")
+                        continue
+                        
+                    print(f"Found latest message ID: {latest_message.id}")
+                    
+                    # Process the message group
+                    last_id = await self._process_message_group(channel, latest_message, db)
+                    
+                    # Create channel state
+                    channel_state = ChannelState(
+                        channel_id=channel.id,
+                        channel_name=channel.username or channel.title,
+                        last_message_id=last_id if last_id is not None else latest_message.id,
+                        last_parsed_date=datetime.now(tz.utc)
+                    )
+                    db.add(channel_state)
+                    db.commit()
+                    print(f"Created channel state with last_message_id = {channel_state.last_message_id}")
+                    
+                else:
+                    print(f"\nExisting channel, last_message_id = {channel_state.last_message_id}")
+                    # Get new messages
+                    new_messages = await self.client.get_messages(
+                        channel,
+                        min_id=channel_state.last_message_id
+                    )
+                    
+                    if not new_messages:
+                        print("No new messages found")
+                        continue
+                        
+                    print(f"Found {len(new_messages)} new messages")
+                    
+                    # Track processed groups to avoid duplicates
+                    processed_groups = set()
+                    highest_id = channel_state.last_message_id
+                    
+                    # Process messages in chronological order
+                    for message in reversed(new_messages):
+                        if not message:
                             continue
                             
-                        print(f"Found {len(new_messages)} new messages")
-                        
-                        # Track processed groups to avoid duplicates
-                        processed_groups = set()
-                        highest_id = channel_state.last_message_id
-                        
-                        # Process messages in chronological order
-                        for message in reversed(new_messages):
-                            if not message:
-                                continue
-                                
-                            # Skip if we've already processed this group
-                            group_id = message.grouped_id or message.id
-                            if group_id in processed_groups:
-                                print(f"Skipping message {message.id} (group {group_id} already processed)")
-                                continue
-                                
-                            # Get all messages in the group
-                            group_messages = await self._get_message_group(channel, message)
-                            if not group_messages:
-                                continue
-                                
-                            # Find the first message in the group
-                            first_message = min(group_messages, key=lambda m: m.id)
+                        # Skip if we've already processed this group
+                        group_id = message.grouped_id or message.id
+                        if group_id in processed_groups:
+                            print(f"Skipping message {message.id} (group {group_id} already processed)")
+                            continue
                             
-                            # Process the group using the first message
-                            last_id = await self._process_message_group(channel, first_message, db)
-                            if last_id:
-                                highest_id = max(highest_id, last_id)
-                                processed_groups.add(group_id)
+                        # Get all messages in the group
+                        group_messages = await self._get_message_group(channel, message)
+                        if not group_messages:
+                            continue
+                            
+                        # Find the first message in the group
+                        first_message = min(group_messages, key=lambda m: m.id)
                         
-                        # Update channel state
-                        if highest_id > channel_state.last_message_id:
-                            channel_state.last_message_id = highest_id
-                            channel_state.last_parsed_date = datetime.now(tz.utc)
-                            db.commit()
-                            print(f"Updated channel state: last_message_id = {highest_id}")
+                        # Process the group using the first message
+                        last_id = await self._process_message_group(channel, first_message, db)
+                        if last_id:
+                            highest_id = max(highest_id, last_id)
+                            processed_groups.add(group_id)
                     
-                except Exception as e:
-                    print(f"Error parsing channel {channel_name}: {str(e)}")
-                    import traceback
-                    print(f"Traceback: {traceback.format_exc()}")
-                    continue
-                    
-                await asyncio.sleep(1)  # Avoid hitting rate limits
-            
-            print("\nFinished parsing all channels, waiting 60 seconds...")
-            await asyncio.sleep(60)  # Check every minute
+                    # Update channel state
+                    if highest_id > channel_state.last_message_id:
+                        channel_state.last_message_id = highest_id
+                        channel_state.last_parsed_date = datetime.now(tz.utc)
+                        db.commit()
+                        print(f"Updated channel state: last_message_id = {highest_id}")
+                
+            except Exception as e:
+                print(f"Error parsing channel {channel_name}: {str(e)}")
+                import traceback
+                print(f"Traceback: {traceback.format_exc()}")
+                continue
 
 async def main():
     session_manager = SessionManager()
