@@ -43,3 +43,6 @@ ENV/
 # Session files
 *.session
 *.session-journal
+session_string.txt
+*_session
+sessions/
