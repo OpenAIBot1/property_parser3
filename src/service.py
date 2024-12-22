@@ -62,20 +62,16 @@ async def main():
                     logger.error(f"Error during channel parsing: {str(e)}", exc_info=True)
                     logger.info("Waiting 60 seconds before retry...")
                     await asyncio.sleep(60)  # Wait 1 minute before retrying
-            
+                    
         except KeyboardInterrupt:
             logger.info("Received shutdown signal")
         finally:
             await parser.stop()
             logger.info("Parser stopped")
-                
-        except Exception as e:
-            logger.error(f"Error in main service: {str(e)}")
-            await parser.stop()
-            raise
             
     except Exception as e:
-        logger.error(f"Service error: {str(e)}")
+        logger.error(f"Error in main service: {str(e)}")
+        await parser.stop()
         raise
 
 if __name__ == "__main__":
