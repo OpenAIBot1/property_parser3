@@ -1,12 +1,18 @@
 [build]
 builder = "nixpacks"
+nixpacksConfigPath = "./nixpacks.toml"
 buildCommand = "pip install -r requirements.txt"
 
 [deploy]
 startCommand = "python -m src.service"
-restartPolicyType = "on_failure"
+healthcheckPath = "/"
+healthcheckTimeout = 100
+restartPolicyType = "on-failure"
 restartPolicyMaxRetries = 10
 
 [service]
 internal_port = 8000
 auto_deploy = true
+
+[nixpacks]
+python-version = "3.12.1"
