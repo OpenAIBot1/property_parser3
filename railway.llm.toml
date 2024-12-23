@@ -1,6 +1,7 @@
 [build]
 builder = "nixpacks"
 buildCommand = "pip install -r requirements.txt"
+version = { file = "VERSION_LLM" }
 
 [deploy]
 startCommand = "cd /app && python -m src.llm_processor.service"
