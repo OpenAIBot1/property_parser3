@@ -3,7 +3,7 @@ builder = "nixpacks"
 buildCommand = "pip install -r requirements.txt"
 
 [deploy]
-startCommand = "python -m src.llm_processor.service"
+startCommand = "cd /app && python -m src.llm_processor.service"
 restartPolicyType = "on-failure"
 restartPolicyMaxRetries = 3
 enabled = true
