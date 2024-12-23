@@ -1,15 +1,13 @@
-# This is a reference configuration that points to the parser service
-# For LLM processor, use railway.llm.toml
-
 [build]
 builder = "nixpacks"
 nixpacksConfigPath = "./nixpacks.toml"
 buildCommand = "pip install -r requirements.txt"
 
 [deploy]
-startCommand = "python -m src.service"
+startCommand = "python -m src.llm_processor.service"
 restartPolicyType = "always"
 restartPolicyMaxRetries = 10
+enabled = false  # LLM processor is disabled by default
 
 [nixpacks]
 python-version = "3.12.1"

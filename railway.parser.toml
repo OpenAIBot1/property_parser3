@@ -1,6 +1,3 @@
-# This is a reference configuration that points to the parser service
-# For LLM processor, use railway.llm.toml
-
 [build]
 builder = "nixpacks"
 nixpacksConfigPath = "./nixpacks.toml"

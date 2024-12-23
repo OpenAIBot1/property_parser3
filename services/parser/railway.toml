@@ -1,0 +1,12 @@
+[build]
+builder = "nixpacks"
+nixpacksConfigPath = "../../nixpacks.toml"
+buildCommand = "pip install -r ../../requirements.txt"
+
+[deploy]
+startCommand = "python -m src.service"
+restartPolicyType = "always"
+restartPolicyMaxRetries = 10
+
+[nixpacks]
+python-version = "3.12.1"
