@@ -1,8 +1,13 @@
 [build]
-dockerfile = "Dockerfile.llm"
+builder = "nixpacks"
+nixpacksConfigPath = "./nixpacks.llm.toml"
+buildCommand = "pip install -r requirements.txt"
 
 [deploy]
-startCommand = "cd /app && python -m src.llm_processor.service"
+startCommand = "python -m src.llm_processor.service"
 restartPolicyType = "on-failure"
 restartPolicyMaxRetries = 3
 enabled = true
+
+[nixpacks]
+python-version = "3.12.1"
