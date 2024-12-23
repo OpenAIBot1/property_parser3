@@ -27,7 +27,7 @@ class MessageGroup(Base):
     
     messages = relationship("Message", back_populates="group", cascade="all, delete-orphan")
     media_items = relationship("MediaItem", back_populates="group", cascade="all, delete-orphan")
-    cleaned_listing = relationship("CleanedListing", backref="group")
+    cleaned_listing = relationship("CleanedListing", back_populates="message_group", uselist=False)
 
 class Message(Base):
     __tablename__ = 'messages'
@@ -106,4 +106,4 @@ class CleanedListing(Base):
     # Media
     image_urls = Column(Text)  # JSON array of image URLs
     
-    group = relationship("MessageGroup", backref="cleaned_listing")
+    message_group = relationship("MessageGroup", back_populates="cleaned_listing")
