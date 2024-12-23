@@ -124,7 +124,7 @@ class TelegramParser:
             # Get messages before
             before = await self.client.get_messages(
                 channel,
-                limit=5,
+                limit=15,
                 max_id=message.id
             )
             if before:
@@ -133,7 +133,7 @@ class TelegramParser:
             # Get messages after
             after = await self.client.get_messages(
                 channel,
-                limit=5,
+                limit=15,
                 min_id=message.id-1
             )
             if after:
@@ -318,10 +318,20 @@ class TelegramParser:
                     
                 else:
                     print(f"\nExisting channel, last_message_id = {channel_state.last_message_id}")
-                    # Get new messages
+                    # Get latest message to determine max_id
+                    latest_messages = await self.client.get_messages(channel, limit=1)
+                    if not latest_messages or not latest_messages[0]:
+                        print("No messages found in channel")
+                        continue
+                        
+                    max_message_id = latest_messages[0].id
+                    print(f"Latest message ID: {max_message_id}")
+                    
+                    # Get new messages with both min_id and max_id
                     new_messages = await self.client.get_messages(
                         channel,
-                        min_id=channel_state.last_message_id
+                        min_id=channel_state.last_message_id,
+                        max_id=max_message_id
                     )
                     
                     if not new_messages:
