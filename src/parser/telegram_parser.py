@@ -8,6 +8,7 @@ from src.config.settings import API_ID, API_HASH, SESSION_NAME, CHANNEL_NAMES
 from src.database.models import MessageGroup, Message, MediaItem, ChannelState
 from src.database.engine import get_db
 from src.telegram.session_manager import SessionManager
+import logging
 
 class TelegramParser:
     """Parser for Telegram channels."""
@@ -21,21 +22,22 @@ class TelegramParser:
         self.session_manager = session_manager
         self.client = None
         self._running = False
+        self.logger = logging.getLogger(__name__)
         
     async def start(self):
         """Start the parser."""
-        print("Starting parser...")
+        self.logger.info("Starting parser...")
         self._running = True
         self.client = await self.session_manager.get_client()
-        print("Parser started successfully")
+        self.logger.info("Parser started successfully")
         
     async def stop(self):
         """Stop the parser."""
-        print("Stopping parser...")
+        self.logger.info("Stopping parser...")
         self._running = False
         if self.session_manager:
             await self.session_manager.disconnect()
-        print("Parser stopped")
+        self.logger.info("Parser stopped")
 
     async def _download_media(self, message, media):
         """Download media and return the file bytes."""
@@ -44,7 +46,7 @@ class TelegramParser:
             if file:
                 return file
         except Exception as e:
-            print(f"Error downloading media: {str(e)}")
+            self.logger.error(f"Error downloading media: {str(e)}")
         return None
 
     async def _process_media(self, message, db_group):
@@ -108,7 +110,7 @@ class TelegramParser:
                     has_media = True
                     
         except Exception as e:
-            print(f"Error processing media: {str(e)}")
+            self.logger.error(f"Error processing media: {str(e)}")
             
         return has_media
 
@@ -160,7 +162,7 @@ class TelegramParser:
             return unique_messages if unique_messages else [message]
             
         except Exception as e:
-            print(f"Error getting message group: {str(e)}")
+            self.logger.error(f"Error getting message group: {str(e)}")
             return [message] if message else []
 
     async def _process_message_group(self, channel, message, db):
@@ -172,14 +174,14 @@ class TelegramParser:
             # Get all messages in the group
             messages = await self._get_message_group(channel, message)
             if not messages:
-                print(f"No messages found in group for message {message.id}")
+                self.logger.info(f"No messages found in group for message {message.id}")
                 return None
                 
             # Get the first and last message IDs
             first_id = min(msg.id for msg in messages)
             last_id = max(msg.id for msg in messages)
             
-            print(f"Processing message group: {len(messages)} messages, IDs {first_id}-{last_id}")
+            self.logger.info(f"Processing message group: {len(messages)} messages, IDs {first_id}-{last_id}")
             
             # Generate message link
             if channel.username:
@@ -224,30 +226,30 @@ class TelegramParser:
             # Only commit if the group has media
             if has_media:
                 db.commit()
-                print(f"Saved message group {db_group.group_id} ({len(messages)} messages, {media_count} media items)")
-                print(f"Message link: {message_link}")
+                self.logger.info(f"Saved message group {db_group.group_id} ({len(messages)} messages, {media_count} media items)")
+                self.logger.info(f"Message link: {message_link}")
                 return last_id
             else:
                 db.rollback()
-                print(f"Skipped message group {db_group.group_id} (no media)")
+                self.logger.info(f"Skipped message group {db_group.group_id} (no media)")
                 return None
                 
         except Exception as e:
             db.rollback()
-            print(f"Error processing message group: {str(e)}")
+            self.logger.error(f"Error processing message group: {str(e)}")
             return None
 
     async def parse_channels(self):
         """Parse all channels for new messages."""
         if not self.client or not self.client.is_connected():
-            print("Connecting client...")
+            self.logger.info("Connecting client...")
             self.client = await self.session_manager.get_client()
-            print("Client connected successfully")
+            self.logger.info("Client connected successfully")
             
         db = next(get_db())
         
-        print(f"\nStarting to parse channels: {CHANNEL_NAMES}")
-        print(f"Parser running state: {self._running}")
+        self.logger.info(f"\nStarting to parse channels: {CHANNEL_NAMES}")
+        self.logger.info(f"Parser running state: {self._running}")
         
         for channel_name in CHANNEL_NAMES:
             if not channel_name:
@@ -255,31 +257,31 @@ class TelegramParser:
                 
             try:
                 # Get channel
-                print(f"\n{'='*50}")
-                print(f"Processing channel: {channel_name}")
+                self.logger.info(f"\n{'='*50}")
+                self.logger.info(f"Processing channel: {channel_name}")
                 try:
                     # Try with @ prefix if not present
                     if not channel_name.startswith('@'):
-                        print(f"Trying with @ prefix...")
+                        self.logger.info(f"Trying with @ prefix...")
                         try:
                             channel = await self.client.get_entity(f"@{channel_name}")
                         except:
-                            print(f"Failed with @ prefix, trying original name...")
+                            self.logger.info(f"Failed with @ prefix, trying original name...")
                             channel = await self.client.get_entity(channel_name)
                     else:
                         channel = await self.client.get_entity(channel_name)
                         
-                    print(f"Successfully connected to channel: {channel.title}")
-                    print(f"Channel ID: {channel.id}")
-                    print(f"Channel username: {channel.username}")
+                    self.logger.info(f"Successfully connected to channel: {channel.title}")
+                    self.logger.info(f"Channel ID: {channel.id}")
+                    self.logger.info(f"Channel username: {channel.username}")
                     
                 except ValueError as e:
-                    print(f"Error accessing channel {channel_name}: {str(e)}")
-                    print("Try using the full channel URL (t.me/...) or channel ID")
-                    print("Make sure you have joined the channel")
+                    self.logger.error(f"Error accessing channel {channel_name}: {str(e)}")
+                    self.logger.info("Try using the full channel URL (t.me/...) or channel ID")
+                    self.logger.info("Make sure you have joined the channel")
                     continue
                 except Exception as e:
-                    print(f"Unexpected error accessing channel {channel_name}: {str(e)}")
+                    self.logger.error(f"Unexpected error accessing channel {channel_name}: {str(e)}")
                     continue
                 
                 # Get or create channel state
@@ -288,19 +290,19 @@ class TelegramParser:
                 ).first()
                 
                 if not channel_state:
-                    print("\nNew channel detected, getting latest message")
+                    self.logger.info("\nNew channel detected, getting latest message")
                     # Get latest message
                     latest_messages = await self.client.get_messages(channel, limit=1)
                     if not latest_messages:
-                        print("No messages found in channel")
+                        self.logger.info("No messages found in channel")
                         continue
                         
                     latest_message = latest_messages[0]
                     if not latest_message:
-                        print("No valid message found")
+                        self.logger.info("No valid message found")
                         continue
                         
-                    print(f"Found latest message ID: {latest_message.id}")
+                    self.logger.info(f"Found latest message ID: {latest_message.id}")
                     
                     # Process the message group
                     last_id = await self._process_message_group(channel, latest_message, db)
@@ -314,18 +316,18 @@ class TelegramParser:
                     )
                     db.add(channel_state)
                     db.commit()
-                    print(f"Created channel state with last_message_id = {channel_state.last_message_id}")
+                    self.logger.info(f"Created channel state with last_message_id = {channel_state.last_message_id}")
                     
                 else:
-                    print(f"\nExisting channel, last_message_id = {channel_state.last_message_id}")
+                    self.logger.info(f"\nExisting channel, last_message_id = {channel_state.last_message_id}")
                     # Get latest message to determine max_id
                     latest_messages = await self.client.get_messages(channel, limit=1)
                     if not latest_messages or not latest_messages[0]:
-                        print("No messages found in channel")
+                        self.logger.info("No messages found in channel")
                         continue
                         
                     max_message_id = latest_messages[0].id
-                    print(f"Latest message ID: {max_message_id}")
+                    self.logger.info(f"Latest message ID: {max_message_id}")
                     
                     # Get new messages with both min_id and max_id
                     new_messages = await self.client.get_messages(
@@ -335,10 +337,10 @@ class TelegramParser:
                     )
                     
                     if not new_messages:
-                        print("No new messages found")
+                        self.logger.info("No new messages found")
                         continue
                         
-                    print(f"Found {len(new_messages)} new messages")
+                    self.logger.info(f"Found {len(new_messages)} new messages")
                     
                     # Track processed groups to avoid duplicates
                     processed_groups = set()
@@ -352,7 +354,7 @@ class TelegramParser:
                         # Skip if we've already processed this group
                         group_id = message.grouped_id or message.id
                         if group_id in processed_groups:
-                            print(f"Skipping message {message.id} (group {group_id} already processed)")
+                            self.logger.info(f"Skipping message {message.id} (group {group_id} already processed)")
                             continue
                             
                         # Get all messages in the group
@@ -374,12 +376,12 @@ class TelegramParser:
                         channel_state.last_message_id = highest_id
                         channel_state.last_parsed_date = datetime.now(tz.utc)
                         db.commit()
-                        print(f"Updated channel state: last_message_id = {highest_id}")
+                        self.logger.info(f"Updated channel state: last_message_id = {highest_id}")
                 
             except Exception as e:
-                print(f"Error parsing channel {channel_name}: {str(e)}")
+                self.logger.error(f"Error parsing channel {channel_name}: {str(e)}")
                 import traceback
-                print(f"Traceback: {traceback.format_exc()}")
+                self.logger.error(f"Traceback: {traceback.format_exc()}")
                 continue
 
 async def main():

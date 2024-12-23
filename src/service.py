@@ -42,13 +42,10 @@ async def run_parser(parser):
 
 async def main():
     """Main service function."""
-    print("\nService starting...")
     logger.info("Service starting")
-    print(f"Using channel names: {settings.CHANNEL_NAMES}")
     logger.info(f"Using channel names: {settings.CHANNEL_NAMES}")
     
     if not settings.CHANNEL_NAMES:
-        print("ERROR: No channel names configured!")
         logger.error("No channel names configured")
         return
 
