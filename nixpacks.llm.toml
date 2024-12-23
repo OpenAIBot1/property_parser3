@@ -1,0 +1,11 @@
+[phases.setup]
+nixPkgs = ["python312", "gcc", "python312Packages.pip"]
+
+[phases.install]
+cmds = ["python -m pip install --upgrade pip", "pip install -r requirements.txt"]
+
+[phases.build]
+cmds = ["pip install -e ."]
+
+[start]
+cmd = "python -m src.llm_processor.service"

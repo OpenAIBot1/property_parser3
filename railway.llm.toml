@@ -1,6 +1,6 @@
 [build]
 builder = "nixpacks"
-nixpacksConfigPath = "./nixpacks.toml"
+nixpacksConfigPath = "./nixpacks.llm.toml"
 buildCommand = "pip install -r requirements.txt"
 
 [deploy]
