@@ -5,9 +5,9 @@ buildCommand = "pip install -r requirements.txt"
 
 [deploy]
 startCommand = "python -m src.llm_processor.service"
-restartPolicyType = "always"
-restartPolicyMaxRetries = 10
-enabled = false  # LLM processor is disabled by default
+restartPolicyType = "on-failure"
+restartPolicyMaxRetries = 3
+enabled = true  # Enable the service for deployment
 
 [nixpacks]
 python-version = "3.12.1"

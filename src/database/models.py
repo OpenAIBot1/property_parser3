@@ -1,5 +1,5 @@
 from datetime import datetime, timezone as tz
-from sqlalchemy import Column, Integer, BigInteger, String, DateTime, ForeignKey, LargeBinary, Text
+from sqlalchemy import Column, Integer, BigInteger, String, DateTime, ForeignKey, LargeBinary, Text, Float, Boolean
 from sqlalchemy.orm import relationship
 from src.database.engine import Base
 
@@ -27,6 +27,7 @@ class MessageGroup(Base):
     
     messages = relationship("Message", back_populates="group", cascade="all, delete-orphan")
     media_items = relationship("MediaItem", back_populates="group", cascade="all, delete-orphan")
+    cleaned_listing = relationship("CleanedListing", backref="group")
 
 class Message(Base):
     __tablename__ = 'messages'
@@ -50,3 +51,59 @@ class MediaItem(Base):
     file_url = Column(LargeBinary)  # Store raw bytes
     
     group = relationship("MessageGroup", back_populates="media_items")
+
+class CleanedListing(Base):
+    __tablename__ = 'cleaned_listings'
+
+    id = Column(Integer, primary_key=True)
+    group_id = Column(BigInteger, ForeignKey('message_groups.id'))
+    original_text = Column(Text)
+    processed_date = Column(DateTime, default=lambda: datetime.now(tz.utc))
+    
+    # Basic Details
+    layout = Column(String)  # Stored as enum string value
+    area_sqm = Column(Float)
+    floor = Column(Integer)
+    total_floors = Column(Integer)
+    bedrooms = Column(Integer)
+    has_balcony = Column(Boolean)
+
+    # Location
+    address = Column(Text)
+    district = Column(String)
+    nearby_landmarks = Column(Text)  # JSON array of strings
+
+    # Financial
+    monthly_rent_usd = Column(Float)
+    summer_rent_usd = Column(Float)
+    requires_first_last = Column(Boolean)
+    deposit_amount_usd = Column(Float)
+    commission = Column(Float)
+
+    # Amenities
+    heating_type = Column(String)  # Stored as enum string value
+    has_oven = Column(Boolean)
+    has_microwave = Column(Boolean)
+    has_ac = Column(Boolean)
+    has_internet = Column(Boolean)
+    has_tv = Column(Boolean)
+    has_parking = Column(Boolean)
+    has_bathtub = Column(Boolean)
+    is_furnished = Column(Boolean)
+
+    # Contact
+    phone_numbers = Column(Text)  # JSON array of strings
+    whatsapp = Column(String)
+    telegram = Column(String)
+    contact_name = Column(String)
+
+    # Terms
+    min_lease_months = Column(Integer)
+    max_lease_months = Column(Integer)
+    pet_policy = Column(String)  # Stored as enum string value
+    has_contract = Column(Boolean)
+
+    # Media
+    image_urls = Column(Text)  # JSON array of image URLs
+    
+    group = relationship("MessageGroup", backref="cleaned_listing")
