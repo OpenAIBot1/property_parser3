@@ -120,18 +120,33 @@ class ListingProcessorService:
             int: Number of message groups removed
         """
         cutoff_time = datetime.now(timezone.utc) - timedelta(hours=48)
+        logger.info(f"Running cleanup for data older than {cutoff_time.isoformat()}")
         
-        # Find old message groups
-        query = select(MessageGroup).where(MessageGroup.parsed_date < cutoff_time)
-        result = await session.execute(query)
-        old_groups = result.scalars().all()
-        
-        # Delete the groups (cascade will handle related records)
-        for group in old_groups:
-            await session.delete(group)
-        
-        await session.commit()
-        return len(old_groups)
+        try:
+            # Find old message groups based on posted_date
+            query = select(MessageGroup).where(MessageGroup.posted_date < cutoff_time)
+            result = await session.execute(query)
+            old_groups = result.scalars().all()
+            
+            if not old_groups:
+                logger.info("No old message groups found to clean up")
+                return 0
+                
+            logger.info(f"Found {len(old_groups)} message groups to clean up")
+            
+            # Delete the groups (cascade will handle related records)
+            for group in old_groups:
+                logger.debug(f"Deleting group {group.id} posted at {group.posted_date.isoformat()}")
+                await session.delete(group)
+            
+            await session.commit()
+            logger.info(f"Successfully cleaned up {len(old_groups)} old message groups")
+            return len(old_groups)
+            
+        except Exception as e:
+            logger.error(f"Error during cleanup: {str(e)}")
+            await session.rollback()
+            return 0
 
     async def run_service(self, total_limit: int = 10, sleep_interval: int = 60):
         """Run the service continuously.
@@ -142,7 +157,7 @@ class ListingProcessorService:
         """
         processed = 0
         cleanup_interval = 3600  # Run cleanup every hour
-        last_cleanup = datetime.now(timezone.utc)
+        last_cleanup = datetime.now(timezone.utc) - timedelta(hours=1)  # Run first cleanup immediately
         
         while processed < total_limit:
             try:
@@ -150,9 +165,8 @@ class ListingProcessorService:
                     # Run periodic cleanup
                     now = datetime.now(timezone.utc)
                     if (now - last_cleanup).total_seconds() >= cleanup_interval:
+                        logger.info("Starting scheduled cleanup...")
                         removed_count = await self.cleanup_old_data(session)
-                        if removed_count > 0:
-                            logger.info(f"Cleaned up {removed_count} old message groups")
                         last_cleanup = now
                     
                     # Process next item
