@@ -1,6 +1,6 @@
 import asyncio
 import os
-from datetime import datetime, timezone as tz
+from datetime import datetime, timezone as tz, timedelta
 from telethon import TelegramClient
 from telethon.tl.types import MessageMediaPhoto, MessageMediaDocument, DocumentAttributeImageSize, DocumentAttributeVideo, DocumentAttributeAudio, DocumentAttributeSticker, DocumentAttributeAnimated
 from telethon.sessions import StringSession
@@ -239,6 +239,35 @@ class TelegramParser:
             self.logger.error(f"Error processing message group: {str(e)}")
             return None
 
+    async def _cleanup_old_data(self, db):
+        """Remove data older than 48 hours."""
+        try:
+            cutoff_time = datetime.now(tz.utc) - timedelta(hours=48)
+            self.logger.info(f"Running cleanup for data older than {cutoff_time.isoformat()}")
+            
+            # Find old message groups
+            old_groups = db.query(MessageGroup).filter(
+                MessageGroup.posted_date < cutoff_time
+            ).all()
+            
+            if not old_groups:
+                self.logger.info("No old message groups found to clean up")
+                return
+                
+            self.logger.info(f"Found {len(old_groups)} message groups to clean up")
+            
+            # Delete old groups (cascade will handle related records)
+            for group in old_groups:
+                self.logger.info(f"Deleting group {group.id} posted at {group.posted_date.isoformat()}")
+                db.delete(group)
+            
+            db.commit()
+            self.logger.info(f"Successfully cleaned up {len(old_groups)} old message groups")
+            
+        except Exception as e:
+            self.logger.error(f"Error during cleanup: {str(e)}")
+            db.rollback()
+
     async def parse_channels(self):
         """Parse all channels for new messages."""
         if not self.client or not self.client.is_connected():
@@ -247,6 +276,9 @@ class TelegramParser:
             self.logger.info("Client connected successfully")
             
         db = next(get_db())
+        
+        # Run cleanup before parsing
+        await self._cleanup_old_data(db)
         
         self.logger.info(f"\nStarting to parse channels: {CHANNEL_NAMES}")
         self.logger.info(f"Parser running state: {self._running}")
