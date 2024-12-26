@@ -2,7 +2,7 @@
 import json
 import asyncio
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Optional, List
 
 from sqlalchemy import select
@@ -113,6 +113,64 @@ class ListingProcessorService:
                     
         return False
 
+    async def cleanup_old_data(self, session: AsyncSession) -> int:
+        """Remove data older than 48 hours.
+        
+        Returns:
+            int: Number of message groups removed
+        """
+        cutoff_time = datetime.now(timezone.utc) - timedelta(hours=48)
+        
+        # Find old message groups
+        query = select(MessageGroup).where(MessageGroup.parsed_date < cutoff_time)
+        result = await session.execute(query)
+        old_groups = result.scalars().all()
+        
+        # Delete the groups (cascade will handle related records)
+        for group in old_groups:
+            await session.delete(group)
+        
+        await session.commit()
+        return len(old_groups)
+
+    async def run_service(self, total_limit: int = 10, sleep_interval: int = 60):
+        """Run the service continuously.
+        
+        Args:
+            total_limit: Total number of items to process before stopping
+            sleep_interval: Seconds to sleep when no items to process
+        """
+        processed = 0
+        cleanup_interval = 3600  # Run cleanup every hour
+        last_cleanup = datetime.now(timezone.utc)
+        
+        while processed < total_limit:
+            try:
+                async with async_session() as session:
+                    # Run periodic cleanup
+                    now = datetime.now(timezone.utc)
+                    if (now - last_cleanup).total_seconds() >= cleanup_interval:
+                        removed_count = await self.cleanup_old_data(session)
+                        if removed_count > 0:
+                            logger.info(f"Cleaned up {removed_count} old message groups")
+                        last_cleanup = now
+                    
+                    # Process next item
+                    group = await self.get_next_unprocessed(session)
+                    if not group:
+                        logger.info("No unprocessed items found, sleeping...")
+                        await asyncio.sleep(sleep_interval)
+                        continue
+                        
+                    success = await self.process_listing(session, group)
+                    if success:
+                        processed += 1
+                        logger.info(f"Successfully processed {processed}/{total_limit} items")
+                    
+            except Exception as e:
+                logger.error(f"Error in service loop: {str(e)}")
+                await asyncio.sleep(sleep_interval)
+
 async def run_service(total_limit: int = 10, sleep_interval: int = 60):
     """Run the service continuously.
     
@@ -124,26 +182,7 @@ async def run_service(total_limit: int = 10, sleep_interval: int = 60):
     processor = LLMProcessor(config)
     service = ListingProcessorService(processor)
     
-    processed_count = 0
-    
-    while processed_count < total_limit:
-        try:
-            async with async_session() as session:
-                group = await service.get_next_unprocessed(session)
-                
-                if group:
-                    logger.info(f"Processing group {group.id} ({processed_count + 1}/{total_limit})")
-                    if await service.process_listing(session, group):
-                        processed_count += 1
-                else:
-                    logger.info("No unprocessed listings found, sleeping...")
-                    await asyncio.sleep(sleep_interval)
-                    
-        except Exception as e:
-            logger.error(f"Service error: {str(e)}")
-            await asyncio.sleep(sleep_interval)
-            
-    logger.info(f"Reached total limit of {total_limit} processed items. Stopping service.")
+    await service.run_service(total_limit, sleep_interval)
 
 if __name__ == "__main__":
     asyncio.run(run_service(total_limit=10))
